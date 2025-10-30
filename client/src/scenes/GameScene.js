@@ -19,8 +19,8 @@ export class GameScene extends Phaser.Scene {
         this.tiles = new Map();
 
         // Camera setup
-        this.tileSize = 16;
-        this.cameras.main.setZoom(2);
+        this.tileSize = 32; // Aumentar tile size para visualização melhor
+        this.cameras.main.setZoom(1.5);
 
         // Input
         this.cursors = this.input.keyboard.createCursorKeys();
@@ -37,6 +37,9 @@ export class GameScene extends Phaser.Scene {
         // Connect to server
         this.connectToServer();
 
+        // Connection indicator
+        this.createConnectionIndicator();
+
         // Start UI scene
         this.scene.launch('UIScene');
     }
@@ -52,12 +55,24 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.socket.on('connect', () => {
-            console.log('Connected to server!');
+            console.log('🔌 Connected to server!');
+            this.updateConnectionStatus('connecting', 'Connecting...');
         });
 
         this.socket.on('connected', (data) => {
-            console.log('Game started:', data);
+            console.log('✅ Game started:', data);
             this.player = data.player;
+
+            // Update connection status
+            this.updateConnectionStatus('connected', 'Connected');
+
+            // Renderizar mundo inicial
+            if (data.world) {
+                console.log('🗺️  Rendering initial world...');
+                this.renderInitialWorld(data.world);
+            }
+
+            // Criar sprite do player
             this.createPlayerSprite(data.player);
         });
 
@@ -83,10 +98,20 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.socket.on('move_rejected', (data) => {
-            console.warn('Move rejected:', data.reason);
-            if (this.playerSprite && this.player) {
-                this.playerSprite.x = this.player.x * this.tileSize;
-                this.playerSprite.y = this.player.y * this.tileSize;
+            console.warn('❌ Move rejected:', data.reason);
+            // Rollback para posição correta do servidor
+            if (this.playerSprite && data.current_position) {
+                this.player.x = data.current_position.x;
+                this.player.y = data.current_position.y;
+
+                // Snap back to correct position
+                this.tweens.add({
+                    targets: [this.playerSprite, this.playerText],
+                    x: this.player.x * this.tileSize + this.tileSize / 2,
+                    y: this.player.y * this.tileSize + (this.playerSprite === this.playerText ? - 16 : this.tileSize / 2),
+                    duration: 100,
+                    ease: 'Back.easeOut'
+                });
             }
         });
 
@@ -102,29 +127,116 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.socket.on('error', (data) => {
-            console.error('Server error:', data);
+            console.error('❌ Server error:', data);
+            this.updateConnectionStatus('error', 'Error');
+        });
+
+        this.socket.on('disconnect', () => {
+            console.warn('⚠️  Disconnected from server');
+            this.updateConnectionStatus('disconnected', 'Disconnected');
+        });
+
+        this.socket.on('reconnecting', () => {
+            console.log('🔄 Reconnecting...');
+            this.updateConnectionStatus('connecting', 'Reconnecting...');
         });
     }
 
+    createConnectionIndicator() {
+        // Criar indicador de conexão no canto superior esquerdo
+        const x = 60;
+        const y = 30;
+
+        this.connectionIndicator = this.add.circle(x, y, 8, 0xffaa00);
+        this.connectionIndicator.setScrollFactor(0); // Fixo na tela
+        this.connectionIndicator.setDepth(1000);
+
+        this.connectionText = this.add.text(x + 20, y, 'Connecting...', {
+            fontSize: '14px',
+            color: '#ffffff',
+            fontFamily: 'Arial'
+        });
+        this.connectionText.setScrollFactor(0);
+        this.connectionText.setDepth(1000);
+        this.connectionText.setOrigin(0, 0.5);
+    }
+
+    updateConnectionStatus(status, text) {
+        if (!this.connectionIndicator || !this.connectionText) return;
+
+        const colors = {
+            'connecting': 0xffaa00,  // Orange
+            'connected': 0x00ff00,   // Green
+            'disconnected': 0xff0000, // Red
+            'error': 0xff0000         // Red
+        };
+
+        this.connectionIndicator.setFillStyle(colors[status] || 0xffaa00);
+        this.connectionText.setText(text);
+
+        // Pulse animation for connecting
+        if (status === 'connecting') {
+            this.tweens.add({
+                targets: this.connectionIndicator,
+                alpha: 0.3,
+                duration: 500,
+                yoyo: true,
+                repeat: -1
+            });
+        } else {
+            this.tweens.killTweensOf(this.connectionIndicator);
+            this.connectionIndicator.setAlpha(1);
+        }
+    }
+
+    renderInitialWorld(worldData) {
+        // Renderizar todos os tiles do mundo (não apenas os visíveis)
+        // Isso é temporário para MVP - depois usaremos FOV
+        console.log('🗺️  World data:', worldData);
+
+        // Criar uma camada base com todos os tiles
+        for (let y = 0; y < 50; y++) {
+            for (let x = 0; x < 50; x++) {
+                // Criar tile de parede por padrão (será sobrescrito se for floor)
+                const color = 0x222222;
+                const rect = this.add.rectangle(
+                    x * this.tileSize + this.tileSize / 2,
+                    y * this.tileSize + this.tileSize / 2,
+                    this.tileSize,
+                    this.tileSize,
+                    color
+                );
+                rect.setStrokeStyle(1, 0x111111);
+                this.tiles.set(`${x},${y}`, rect);
+            }
+        }
+
+        console.log(`✅ Rendered ${this.tiles.size} tiles`);
+    }
+
     createPlayerSprite(playerData) {
-        // Create simple circle for player
+        console.log('👤 Creating player sprite at:', playerData.x, playerData.y);
+
+        // Create simple circle for player (maior e mais visível)
         this.playerSprite = this.add.circle(
-            playerData.x * this.tileSize,
-            playerData.y * this.tileSize,
-            8,
+            playerData.x * this.tileSize + this.tileSize / 2,
+            playerData.y * this.tileSize + this.tileSize / 2,
+            12,
             0x00ff00
         );
 
         // Add username text
         this.playerText = this.add.text(
-            playerData.x * this.tileSize,
-            playerData.y * this.tileSize - 12,
+            playerData.x * this.tileSize + this.tileSize / 2,
+            playerData.y * this.tileSize - 16,
             playerData.username,
-            { fontSize: '10px', color: '#fff' }
+            { fontSize: '14px', color: '#fff', fontFamily: 'Arial', fontStyle: 'bold' }
         ).setOrigin(0.5);
 
         // Camera follow player
-        this.cameras.main.startFollow(this.playerSprite);
+        this.cameras.main.startFollow(this.playerSprite, true, 0.1, 0.1);
+
+        console.log('✅ Player sprite created');
     }
 
     handleStateUpdate(data) {
@@ -135,12 +247,12 @@ export class GameScene extends Phaser.Scene {
             // Update UI
             this.registry.set('player', this.player);
 
-            // Update player sprite position
+            // Update player sprite position (com centralização)
             if (this.playerSprite) {
-                this.playerSprite.x = this.player.x * this.tileSize;
-                this.playerSprite.y = this.player.y * this.tileSize;
-                this.playerText.x = this.player.x * this.tileSize;
-                this.playerText.y = this.player.y * this.tileSize - 12;
+                this.playerSprite.x = this.player.x * this.tileSize + this.tileSize / 2;
+                this.playerSprite.y = this.player.y * this.tileSize + this.tileSize / 2;
+                this.playerText.x = this.player.x * this.tileSize + this.tileSize / 2;
+                this.playerText.y = this.player.y * this.tileSize - 16;
             }
         }
 
@@ -156,21 +268,41 @@ export class GameScene extends Phaser.Scene {
     }
 
     renderTiles(tiles) {
-        // Clear old tiles
-        this.tiles.forEach(tile => tile.destroy());
-        this.tiles.clear();
+        // Atualizar tiles existentes com cores corretas baseado em visibilidade
+        tiles.forEach(tileData => {
+            const key = `${tileData.x},${tileData.y}`;
+            const rect = this.tiles.get(key);
 
-        // Render new tiles
-        tiles.forEach(tile => {
-            const color = tile.type === 'wall' ? 0x666666 : 0x333333;
-            const rect = this.add.rectangle(
-                tile.x * this.tileSize,
-                tile.y * this.tileSize,
-                this.tileSize,
-                this.tileSize,
-                color
-            );
-            this.tiles.set(`${tile.x},${tile.y}`, rect);
+            if (rect) {
+                // Atualizar cor baseado no tipo
+                const color = tileData.type === 'wall' ? 0x555555 : 0x333333;
+                rect.setFillStyle(color);
+                rect.setAlpha(1); // Totalmente visível
+
+                // Borda mais clara para tiles visíveis
+                rect.setStrokeStyle(1, 0x666666);
+            } else {
+                // Criar tile se não existir
+                const color = tileData.type === 'wall' ? 0x555555 : 0x333333;
+                const newRect = this.add.rectangle(
+                    tileData.x * this.tileSize + this.tileSize / 2,
+                    tileData.y * this.tileSize + this.tileSize / 2,
+                    this.tileSize,
+                    this.tileSize,
+                    color
+                );
+                newRect.setStrokeStyle(1, 0x666666);
+                this.tiles.set(key, newRect);
+            }
+        });
+
+        // Escurecer tiles não visíveis (fog of war simples)
+        this.tiles.forEach((rect, key) => {
+            const isVisible = tiles.some(t => `${t.x},${t.y}` === key);
+            if (!isVisible) {
+                rect.setAlpha(0.3); // Fog of war
+                rect.setStrokeStyle(1, 0x111111);
+            }
         });
     }
 
@@ -183,26 +315,26 @@ export class GameScene extends Phaser.Scene {
 
                     if (!sprite) {
                         sprite = this.add.circle(
-                            otherPlayer.x * this.tileSize,
-                            otherPlayer.y * this.tileSize,
-                            8,
+                            otherPlayer.x * this.tileSize + this.tileSize / 2,
+                            otherPlayer.y * this.tileSize + this.tileSize / 2,
+                            12,
                             0x0088ff
                         );
 
                         sprite.nameText = this.add.text(
-                            otherPlayer.x * this.tileSize,
-                            otherPlayer.y * this.tileSize - 12,
+                            otherPlayer.x * this.tileSize + this.tileSize / 2,
+                            otherPlayer.y * this.tileSize - 16,
                             otherPlayer.username,
-                            { fontSize: '10px', color: '#0af' }
+                            { fontSize: '14px', color: '#0af', fontFamily: 'Arial', fontStyle: 'bold' }
                         ).setOrigin(0.5);
 
                         this.otherPlayers.set(otherPlayer.id, sprite);
                     }
 
-                    sprite.x = otherPlayer.x * this.tileSize;
-                    sprite.y = otherPlayer.y * this.tileSize;
-                    sprite.nameText.x = otherPlayer.x * this.tileSize;
-                    sprite.nameText.y = otherPlayer.y * this.tileSize - 12;
+                    sprite.x = otherPlayer.x * this.tileSize + this.tileSize / 2;
+                    sprite.y = otherPlayer.y * this.tileSize + this.tileSize / 2;
+                    sprite.nameText.x = otherPlayer.x * this.tileSize + this.tileSize / 2;
+                    sprite.nameText.y = otherPlayer.y * this.tileSize - 16;
                 }
             });
         }
@@ -214,16 +346,16 @@ export class GameScene extends Phaser.Scene {
 
                 if (!sprite) {
                     sprite = this.add.circle(
-                        enemy.x * this.tileSize,
-                        enemy.y * this.tileSize,
-                        8,
+                        enemy.x * this.tileSize + this.tileSize / 2,
+                        enemy.y * this.tileSize + this.tileSize / 2,
+                        12,
                         0xff0000
                     );
                     this.enemies.set(enemy.id, sprite);
                 }
 
-                sprite.x = enemy.x * this.tileSize;
-                sprite.y = enemy.y * this.tileSize;
+                sprite.x = enemy.x * this.tileSize + this.tileSize / 2;
+                sprite.y = enemy.y * this.tileSize + this.tileSize / 2;
             });
         }
     }
@@ -232,10 +364,22 @@ export class GameScene extends Phaser.Scene {
         if (data.entity_type === 'player' && data.entity_id !== this.player.id) {
             const sprite = this.otherPlayers.get(data.entity_id);
             if (sprite) {
-                sprite.x = data.to.x * this.tileSize;
-                sprite.y = data.to.y * this.tileSize;
-                sprite.nameText.x = data.to.x * this.tileSize;
-                sprite.nameText.y = data.to.y * this.tileSize - 12;
+                // Smooth movement com tween
+                this.tweens.add({
+                    targets: sprite,
+                    x: data.to.x * this.tileSize + this.tileSize / 2,
+                    y: data.to.y * this.tileSize + this.tileSize / 2,
+                    duration: 150,
+                    ease: 'Linear'
+                });
+
+                this.tweens.add({
+                    targets: sprite.nameText,
+                    x: data.to.x * this.tileSize + this.tileSize / 2,
+                    y: data.to.y * this.tileSize - 16,
+                    duration: 150,
+                    ease: 'Linear'
+                });
             }
         }
     }
@@ -279,6 +423,29 @@ export class GameScene extends Phaser.Scene {
         if (moveX !== 0 || moveY !== 0) {
             const targetX = this.player.x + moveX;
             const targetY = this.player.y + moveY;
+
+            // Client-side prediction: move immediately
+            this.player.x = targetX;
+            this.player.y = targetY;
+
+            // Smooth movement animation
+            this.tweens.add({
+                targets: this.playerSprite,
+                x: targetX * this.tileSize + this.tileSize / 2,
+                y: targetY * this.tileSize + this.tileSize / 2,
+                duration: 150,
+                ease: 'Linear'
+            });
+
+            this.tweens.add({
+                targets: this.playerText,
+                x: targetX * this.tileSize + this.tileSize / 2,
+                y: targetY * this.tileSize - 16,
+                duration: 150,
+                ease: 'Linear'
+            });
+
+            // Send to server
             this.socket.emit('player_move', { x: targetX, y: targetY, sequence: Date.now() });
         }
     }

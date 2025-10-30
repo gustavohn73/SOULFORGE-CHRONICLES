@@ -26,17 +26,46 @@ Um jogo onde suas escolhas moldam sua alma. Cada ação violenta, cada decisão 
 git clone https://github.com/gustavohn73/soulforge-chronicles.git
 cd soulforge-chronicles
 
-# Setup automático
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-
-# Rodar com Docker
-docker-compose up
+# Setup automático (cria .env, build e inicia containers)
+chmod +x scripts/setup-docker.sh
+./scripts/setup-docker.sh
 ```
 
-Acesse: **http://localhost:8080**
+O script irá:
+- ✅ Verificar se Docker está instalado
+- 📝 Criar arquivos `.env` se não existirem
+- 🏗️  Fazer build dos containers (server, client, mongodb, ollama)
+- 🚀 Iniciar todos os serviços
+- ⏳ Aguardar MongoDB ficar pronto
 
-### Instalação Manual
+**Acessar o jogo:**
+- 🌐 Cliente: http://localhost:8080
+- 🔌 API Server: http://localhost:5000
+- 🔌 Health Check: http://localhost:5000/health
+- 📊 MongoDB: localhost:27017
+
+**Comandos úteis:**
+```bash
+# Ver logs do servidor
+docker-compose logs -f server
+
+# Ver logs do cliente
+docker-compose logs -f client
+
+# Ver todos os logs
+docker-compose logs -f
+
+# Parar todos os containers
+docker-compose down
+
+# Rebuild após mudanças no código
+docker-compose up --build -d
+
+# Restart serviços
+docker-compose restart
+```
+
+### Instalação Manual (Desenvolvimento)
 
 Veja [INSTALLATION.md](docs/INSTALLATION.md) para instruções detalhadas.
 
