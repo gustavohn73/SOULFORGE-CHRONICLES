@@ -183,5 +183,6 @@ if __name__ == '__main__':
         port=Config.PORT,
         debug=Config.DEBUG,
         use_reloader=False,  # Disable reloader to avoid double initialization
-        log_output=Config.DEBUG
+        log_output=Config.DEBUG,
+        allow_unsafe_werkzeug=True  # For development only
     )
