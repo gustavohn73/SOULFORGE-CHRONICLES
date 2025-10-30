@@ -2,6 +2,7 @@
  * GameScene - Main game loop and rendering
  */
 import io from 'socket.io-client';
+import Player from '../entities/Player.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -13,10 +14,11 @@ export class GameScene extends Phaser.Scene {
 
         // Game state
         this.player = null;
-        this.playerSprite = null;
+        this.playerEntity = null; // Player instance with visual effects
+        this.myPlayerId = null;
         this.otherPlayers = new Map();
         this.enemies = new Map();
-        this.tiles = new Map();
+        this.tiles = [];
 
         // Camera setup
         this.tileSize = 32; // Aumentar tile size para visualização melhor
@@ -62,17 +64,18 @@ export class GameScene extends Phaser.Scene {
         this.socket.on('connected', (data) => {
             console.log('✅ Game started:', data);
             this.player = data.player;
+            this.myPlayerId = data.player.id;
 
             // Update connection status
             this.updateConnectionStatus('connected', 'Connected');
 
-            // Renderizar mundo inicial
+            // Renderizar mundo PRIMEIRO
             if (data.world) {
                 console.log('🗺️  Rendering initial world...');
                 this.renderInitialWorld(data.world);
             }
 
-            // Criar sprite do player
+            // Criar sprite do player DEPOIS do mundo
             this.createPlayerSprite(data.player);
         });
 
@@ -100,18 +103,12 @@ export class GameScene extends Phaser.Scene {
         this.socket.on('move_rejected', (data) => {
             console.warn('❌ Move rejected:', data.reason);
             // Rollback para posição correta do servidor
-            if (this.playerSprite && data.current_position) {
+            if (this.playerEntity && data.current_position) {
                 this.player.x = data.current_position.x;
                 this.player.y = data.current_position.y;
 
-                // Snap back to correct position
-                this.tweens.add({
-                    targets: [this.playerSprite, this.playerText],
-                    x: this.player.x * this.tileSize + this.tileSize / 2,
-                    y: this.player.y * this.tileSize + (this.playerSprite === this.playerText ? - 16 : this.tileSize / 2),
-                    duration: 100,
-                    ease: 'Back.easeOut'
-                });
+                // Snap back usando Player.moveTo sem smooth
+                this.playerEntity.moveTo(data.current_position.x, data.current_position.y, false);
             }
         });
 
@@ -194,6 +191,22 @@ export class GameScene extends Phaser.Scene {
         // Isso é temporário para MVP - depois usaremos FOV
         console.log('🗺️  World data:', worldData);
 
+        // ⭐ GRID LINES (renderizar PRIMEIRO, atrás de tudo)
+        const gridGraphics = this.add.graphics();
+        gridGraphics.lineStyle(1, 0x333333, 0.3);
+        gridGraphics.setDepth(-1); // Atrás de tudo
+
+        for (let x = 0; x <= 50; x++) {
+            gridGraphics.moveTo(x * this.tileSize, 0);
+            gridGraphics.lineTo(x * this.tileSize, 50 * this.tileSize);
+        }
+        for (let y = 0; y <= 50; y++) {
+            gridGraphics.moveTo(0, y * this.tileSize);
+            gridGraphics.lineTo(50 * this.tileSize, y * this.tileSize);
+        }
+        gridGraphics.strokePath();
+        console.log('✅ Grid lines rendered');
+
         // Criar uma camada base com todos os tiles
         for (let y = 0; y < 50; y++) {
             for (let x = 0; x < 50; x++) {
@@ -207,36 +220,47 @@ export class GameScene extends Phaser.Scene {
                     color
                 );
                 rect.setStrokeStyle(1, 0x111111);
-                this.tiles.set(`${x},${y}`, rect);
+                rect.setDepth(0); // Acima do grid, abaixo dos players
+                this.tiles.push(rect);
             }
         }
 
-        console.log(`✅ Rendered ${this.tiles.size} tiles`);
+        // ⭐ SPAWN INDICATOR (marcador temporário onde players nascem)
+        const spawnMarker = this.add.circle(25 * this.tileSize + 16, 25 * this.tileSize + 16, 24, 0xffff00, 0.6);
+        spawnMarker.setDepth(5);
+        this.tweens.add({
+            targets: spawnMarker,
+            alpha: 0,
+            scale: 2,
+            duration: 2000,
+            ease: 'Power2',
+            onComplete: () => spawnMarker.destroy()
+        });
+
+        console.log(`✅ Rendered ${this.tiles.length} tiles with grid`);
     }
 
     createPlayerSprite(playerData) {
-        console.log('👤 Creating player sprite at:', playerData.x, playerData.y);
+        console.log('👤 Creating player entity at:', playerData.x, playerData.y);
 
-        // Create simple circle for player (maior e mais visível)
-        this.playerSprite = this.add.circle(
-            playerData.x * this.tileSize + this.tileSize / 2,
-            playerData.y * this.tileSize + this.tileSize / 2,
-            12,
-            0x00ff00
-        );
+        // ⭐ CRIAR PLAYER usando classe Player
+        this.playerEntity = new Player(this, {
+            ...playerData,
+            id: this.myPlayerId
+        });
+        this.playerEntity.isMe = true;
 
-        // Add username text
-        this.playerText = this.add.text(
-            playerData.x * this.tileSize + this.tileSize / 2,
-            playerData.y * this.tileSize - 16,
-            playerData.username,
-            { fontSize: '14px', color: '#fff', fontFamily: 'Arial', fontStyle: 'bold' }
-        ).setOrigin(0.5);
+        // ⭐ FLASH verde para indicar spawn
+        this.cameras.main.flash(500, 0, 255, 0, true);
 
-        // Camera follow player
-        this.cameras.main.startFollow(this.playerSprite, true, 0.1, 0.1);
+        // ⭐ FOCAR camera NO PLAYER
+        console.log(`🎥 Focusing camera on player at (${playerData.x}, ${playerData.y})`);
+        this.cameras.main.startFollow(this.playerEntity.container, true, 0.1, 0.1);
 
-        console.log('✅ Player sprite created');
+        // ⭐ ZOOM inicial
+        this.cameras.main.setZoom(1.5);
+
+        console.log('✅ Player entity created with visual effects');
     }
 
     handleStateUpdate(data) {
@@ -247,12 +271,17 @@ export class GameScene extends Phaser.Scene {
             // Update UI
             this.registry.set('player', this.player);
 
-            // Update player sprite position (com centralização)
-            if (this.playerSprite) {
-                this.playerSprite.x = this.player.x * this.tileSize + this.tileSize / 2;
-                this.playerSprite.y = this.player.y * this.tileSize + this.tileSize / 2;
-                this.playerText.x = this.player.x * this.tileSize + this.tileSize / 2;
-                this.playerText.y = this.player.y * this.tileSize - 16;
+            // Update player entity position
+            if (this.playerEntity) {
+                // Usar moveTo sem animação para correções do servidor
+                if (this.playerEntity.x !== this.player.x || this.playerEntity.y !== this.player.y) {
+                    this.playerEntity.moveTo(this.player.x, this.player.y, false);
+                }
+
+                // Atualizar HP bar se existir
+                if (this.player.hp !== undefined) {
+                    this.playerEntity.updateHP(this.player.hp, this.player.max_hp);
+                }
             }
         }
 
@@ -269,37 +298,30 @@ export class GameScene extends Phaser.Scene {
 
     renderTiles(tiles) {
         // Atualizar tiles existentes com cores corretas baseado em visibilidade
+        const visibleSet = new Set(tiles.map(t => `${t.x},${t.y}`));
+
         tiles.forEach(tileData => {
-            const key = `${tileData.x},${tileData.y}`;
-            const rect = this.tiles.get(key);
+            const index = tileData.y * 50 + tileData.x;
+            const rect = this.tiles[index];
 
             if (rect) {
                 // Atualizar cor baseado no tipo
-                const color = tileData.type === 'wall' ? 0x555555 : 0x333333;
+                const color = tileData.type === 'wall' ? 0x555555 : 0x444444;
                 rect.setFillStyle(color);
                 rect.setAlpha(1); // Totalmente visível
 
                 // Borda mais clara para tiles visíveis
-                rect.setStrokeStyle(1, 0x666666);
-            } else {
-                // Criar tile se não existir
-                const color = tileData.type === 'wall' ? 0x555555 : 0x333333;
-                const newRect = this.add.rectangle(
-                    tileData.x * this.tileSize + this.tileSize / 2,
-                    tileData.y * this.tileSize + this.tileSize / 2,
-                    this.tileSize,
-                    this.tileSize,
-                    color
-                );
-                newRect.setStrokeStyle(1, 0x666666);
-                this.tiles.set(key, newRect);
+                rect.setStrokeStyle(1, 0x777777);
             }
         });
 
         // Escurecer tiles não visíveis (fog of war simples)
-        this.tiles.forEach((rect, key) => {
-            const isVisible = tiles.some(t => `${t.x},${t.y}` === key);
-            if (!isVisible) {
+        this.tiles.forEach((rect, index) => {
+            const x = index % 50;
+            const y = Math.floor(index / 50);
+            const key = `${x},${y}`;
+
+            if (!visibleSet.has(key)) {
                 rect.setAlpha(0.3); // Fog of war
                 rect.setStrokeStyle(1, 0x111111);
             }
@@ -428,22 +450,10 @@ export class GameScene extends Phaser.Scene {
             this.player.x = targetX;
             this.player.y = targetY;
 
-            // Smooth movement animation
-            this.tweens.add({
-                targets: this.playerSprite,
-                x: targetX * this.tileSize + this.tileSize / 2,
-                y: targetY * this.tileSize + this.tileSize / 2,
-                duration: 150,
-                ease: 'Linear'
-            });
-
-            this.tweens.add({
-                targets: this.playerText,
-                x: targetX * this.tileSize + this.tileSize / 2,
-                y: targetY * this.tileSize - 16,
-                duration: 150,
-                ease: 'Linear'
-            });
+            // ⭐ Usar Player.moveTo para movimento suave
+            if (this.playerEntity) {
+                this.playerEntity.moveTo(targetX, targetY, true);
+            }
 
             // Send to server
             this.socket.emit('player_move', { x: targetX, y: targetY, sequence: Date.now() });
