@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: soulforge-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=soulforge
+    networks:
+      - soulforge-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: soulforge-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - soulforge-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: soulforge-server
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/soulforge
+      - OLLAMA_URL=http://ollama:11434
+      - AI_MASTER_PROVIDER=claude
+      - AI_MASTER_API_KEY=${AI_MASTER_API_KEY}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
+      - DEBUG=True
+      - PORT=5000
+    volumes:
+      - ./server:/app
+      - server-logs:/app/logs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - soulforge-network
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: soulforge-client
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_URL=http://server:5000
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    depends_on:
+      - server
+    networks:
+      - soulforge-network
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+    driver: local
+  ollama-data:
+    driver: local
+  server-logs:
+    driver: local
+
+networks:
+  soulforge-network:
+    driver: bridge
