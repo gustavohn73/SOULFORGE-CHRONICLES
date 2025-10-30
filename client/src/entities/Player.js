@@ -21,32 +21,39 @@ export default class Player {
             this.x * 32 + 16,
             this.y * 32 + 16
         );
-        this.container.setDepth(10); // Acima dos tiles
+        // ⭐ DEPTH MUITO ALTO para garantir que apareça SEMPRE
+        this.container.setDepth(1000); // MUITO acima dos tiles
 
         // ⭐ SHADOW (sombra embaixo)
         this.shadow = scene.add.ellipse(0, 8, 32, 16, 0x000000, 0.4);
         this.container.add(this.shadow);
 
-        // ⭐ GLOW EFFECT (se for player principal)
+        // ⭐ GLOW EFFECT (se for player principal) - MAIOR E MAIS VISÍVEL
         if (this.isMe) {
-            this.glow = scene.add.circle(0, 0, 20, 0x00ff00, 0.3);
+            // Glow externo grande
+            this.glowOuter = scene.add.circle(0, 0, 40, 0x00ff00, 0.2);
+            this.container.add(this.glowOuter);
+
+            this.glow = scene.add.circle(0, 0, 25, 0x00ff00, 0.4);
             this.container.add(this.glow);
 
             // Pulsação do glow
             scene.tweens.add({
-                targets: this.glow,
-                scale: { from: 1, to: 1.4 },
-                alpha: { from: 0.3, to: 0.5 },
-                duration: 1000,
+                targets: [this.glow, this.glowOuter],
+                scale: { from: 1, to: 1.5 },
+                alpha: { from: 0.4, to: 0.6 },
+                duration: 800,
                 yoyo: true,
                 repeat: -1,
                 ease: 'Sine.easeInOut'
             });
         }
 
-        // ⭐ SPRITE PRINCIPAL (quadrado/círculo)
-        this.sprite = scene.add.circle(0, 0, size / 2, color);
-        this.sprite.setStrokeStyle(3, 0xffffff); // borda branca grossa
+        // ⭐ SPRITE PRINCIPAL (MUITO MAIOR E MAIS VISÍVEL)
+        // Usar rectangle ao invés de circle para garantir visibilidade
+        const spriteSize = this.isMe ? 32 : 28;
+        this.sprite = scene.add.rectangle(0, 0, spriteSize, spriteSize, color);
+        this.sprite.setStrokeStyle(4, 0xffffff); // borda branca GROSSA
         this.container.add(this.sprite);
 
         // ⭐ NOME com background

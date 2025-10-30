@@ -194,7 +194,7 @@ export class GameScene extends Phaser.Scene {
         // ⭐ GRID LINES (renderizar PRIMEIRO, atrás de tudo)
         const gridGraphics = this.add.graphics();
         gridGraphics.lineStyle(1, 0x333333, 0.3);
-        gridGraphics.setDepth(-1); // Atrás de tudo
+        gridGraphics.setDepth(-100); // BEM atrás de tudo
 
         for (let x = 0; x <= 50; x++) {
             gridGraphics.moveTo(x * this.tileSize, 0);
@@ -208,6 +208,7 @@ export class GameScene extends Phaser.Scene {
         console.log('✅ Grid lines rendered');
 
         // Criar uma camada base com todos os tiles
+        // ⭐ DEPTH BAIXO para ficar ATRÁS de tudo
         for (let y = 0; y < 50; y++) {
             for (let x = 0; x < 50; x++) {
                 // Criar tile de parede por padrão (será sobrescrito se for floor)
@@ -220,14 +221,14 @@ export class GameScene extends Phaser.Scene {
                     color
                 );
                 rect.setStrokeStyle(1, 0x111111);
-                rect.setDepth(0); // Acima do grid, abaixo dos players
+                rect.setDepth(-10); // ⭐ NEGATIVO - Bem atrás de tudo
                 this.tiles.push(rect);
             }
         }
 
         // ⭐ SPAWN INDICATOR (marcador temporário onde players nascem)
-        const spawnMarker = this.add.circle(25 * this.tileSize + 16, 25 * this.tileSize + 16, 24, 0xffff00, 0.6);
-        spawnMarker.setDepth(5);
+        const spawnMarker = this.add.circle(25 * this.tileSize + 16, 25 * this.tileSize + 16, 24, 0xffff00, 0.8);
+        spawnMarker.setDepth(999); // Alto mas abaixo do player
         this.tweens.add({
             targets: spawnMarker,
             alpha: 0,
@@ -237,11 +238,33 @@ export class GameScene extends Phaser.Scene {
             onComplete: () => spawnMarker.destroy()
         });
 
+        // ⭐ DEBUG MARKER - QUADRADO VERMELHO MASSIVO NO SPAWN
+        const debugMarker = this.add.rectangle(
+            25 * this.tileSize + 16,
+            25 * this.tileSize + 16,
+            64, 64, 0xff0000, 0.5
+        );
+        debugMarker.setDepth(998);
+        debugMarker.setStrokeStyle(3, 0xff0000);
+        console.log('🔴 DEBUG MARKER criado em (25, 25) - Você DEVE ver um quadrado vermelho!');
+
         console.log(`✅ Rendered ${this.tiles.length} tiles with grid`);
     }
 
     createPlayerSprite(playerData) {
         console.log('👤 Creating player entity at:', playerData.x, playerData.y);
+        console.log('🔍 Player data:', JSON.stringify(playerData));
+
+        // ⭐ PRIMEIRO: Criar marcador de teste MASSIVO
+        const testMarker = this.add.rectangle(
+            playerData.x * this.tileSize + 16,
+            playerData.y * this.tileSize + 16,
+            80, 80, 0xff00ff, 0.8
+        );
+        testMarker.setDepth(2000);
+        testMarker.setStrokeStyle(5, 0xffffff);
+        console.log('💜 TEST MARKER criado - Quadrado ROSA/MAGENTA - Você DEVE VER!');
+        console.log(`   Posição pixel: (${playerData.x * this.tileSize + 16}, ${playerData.y * this.tileSize + 16})`);
 
         // ⭐ CRIAR PLAYER usando classe Player
         this.playerEntity = new Player(this, {
@@ -249,6 +272,11 @@ export class GameScene extends Phaser.Scene {
             id: this.myPlayerId
         });
         this.playerEntity.isMe = true;
+
+        console.log('✅ Player entity created');
+        console.log(`   Container position: (${this.playerEntity.container.x}, ${this.playerEntity.container.y})`);
+        console.log(`   Container depth: ${this.playerEntity.container.depth}`);
+        console.log(`   Container visible: ${this.playerEntity.container.visible}`);
 
         // ⭐ FLASH verde para indicar spawn
         this.cameras.main.flash(500, 0, 255, 0, true);
@@ -260,7 +288,17 @@ export class GameScene extends Phaser.Scene {
         // ⭐ ZOOM inicial
         this.cameras.main.setZoom(1.5);
 
-        console.log('✅ Player entity created with visual effects');
+        // ⭐ LOG de TODOS os objetos renderizados
+        console.log('📊 Total objects in scene:', this.children.list.length);
+        console.log('📊 Objects by depth:');
+        const depthMap = {};
+        this.children.list.forEach(child => {
+            const depth = child.depth || 0;
+            depthMap[depth] = (depthMap[depth] || 0) + 1;
+        });
+        console.log(depthMap);
+
+        console.log('✅ Player sprite creation complete!');
     }
 
     handleStateUpdate(data) {
@@ -312,6 +350,9 @@ export class GameScene extends Phaser.Scene {
 
                 // Borda mais clara para tiles visíveis
                 rect.setStrokeStyle(1, 0x777777);
+
+                // ⭐ GARANTIR que depth está correto
+                rect.setDepth(-10);
             }
         });
 
@@ -324,6 +365,7 @@ export class GameScene extends Phaser.Scene {
             if (!visibleSet.has(key)) {
                 rect.setAlpha(0.3); // Fog of war
                 rect.setStrokeStyle(1, 0x111111);
+                rect.setDepth(-10); // ⭐ GARANTIR depth
             }
         });
     }
