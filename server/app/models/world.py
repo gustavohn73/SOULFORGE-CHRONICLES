@@ -18,9 +18,9 @@ class World:
         self.stability = 100.0
         self.created_at = time.time()
 
-        # Map
-        self.width = 80
-        self.height = 60
+        # Map - Tamanho 50x50 para MVP conforme especificação
+        self.width = 50
+        self.height = 50
         self.tiles = {}  # {(x, y): tile_type}
         self.generate_base_map()
 
@@ -42,23 +42,78 @@ class World:
         self.temperature = 20
 
     def generate_base_map(self):
-        """Generate simple base map"""
-        # Create floor tiles
+        """Generate simple base map with rooms and corridors for MVP"""
+        # Inicializar tudo como parede
         for y in range(self.height):
             for x in range(self.width):
-                # Outer walls
-                if x == 0 or x == self.width - 1 or y == 0 or y == self.height - 1:
-                    self.tiles[(x, y)] = {
-                        'type': 'wall',
-                        'walkable': False,
-                        'transparent': False
-                    }
-                else:
-                    self.tiles[(x, y)] = {
-                        'type': 'floor',
-                        'walkable': True,
-                        'transparent': True
-                    }
+                self.tiles[(x, y)] = {
+                    'type': 'wall',
+                    'walkable': False,
+                    'transparent': False
+                }
+
+        # Criar sala central grande (20x20)
+        for y in range(15, 35):
+            for x in range(15, 35):
+                self.tiles[(x, y)] = {
+                    'type': 'floor',
+                    'walkable': True,
+                    'transparent': True
+                }
+
+        # Criar corredores
+        # Corredor horizontal
+        for x in range(10, 40):
+            self.tiles[(x, 25)] = {
+                'type': 'floor',
+                'walkable': True,
+                'transparent': True
+            }
+
+        # Corredor vertical
+        for y in range(10, 40):
+            self.tiles[(25, y)] = {
+                'type': 'floor',
+                'walkable': True,
+                'transparent': True
+            }
+
+        # Criar salas adicionais pequenas (5x5)
+        # Sala norte
+        for y in range(5, 10):
+            for x in range(23, 28):
+                self.tiles[(x, y)] = {
+                    'type': 'floor',
+                    'walkable': True,
+                    'transparent': True
+                }
+
+        # Sala sul
+        for y in range(40, 45):
+            for x in range(23, 28):
+                self.tiles[(x, y)] = {
+                    'type': 'floor',
+                    'walkable': True,
+                    'transparent': True
+                }
+
+        # Sala oeste
+        for y in range(23, 28):
+            for x in range(5, 10):
+                self.tiles[(x, y)] = {
+                    'type': 'floor',
+                    'walkable': True,
+                    'transparent': True
+                }
+
+        # Sala leste
+        for y in range(23, 28):
+            for x in range(40, 45):
+                self.tiles[(x, y)] = {
+                    'type': 'floor',
+                    'walkable': True,
+                    'transparent': True
+                }
 
     def get_tile(self, x: int, y: int) -> Optional[Dict]:
         """Get tile at position"""

@@ -32,8 +32,8 @@ class Config:
     LOOP_MAX_DURATION = int(os.getenv('LOOP_MAX_DURATION', 3600))  # 60 minutes
 
     # Map Settings
-    MAP_WIDTH = 80
-    MAP_HEIGHT = 60
+    MAP_WIDTH = 50
+    MAP_HEIGHT = 50
     DEFAULT_FOV_RADIUS = 8
 
     # Combat Settings
